@@ -83,6 +83,8 @@ func New(n int, fp float64) *Filter {
 //
 // - n: number of buckets in the table.
 //
+// f * b must be less than 64.
+//
 // The most efficient representation can be used when f=4 and b=4, using the fewest bits per item.
 //
 // See https://www.cs.cmu.edu/~dga/papers/cuckoo-conext2014.pdf for more information on how to
@@ -197,10 +199,13 @@ func (fl *Filter) Contains(x []byte) Result {
 	return No
 }
 
+// True if the filter has overflowed, and now blindly returns Maybe for every query. This happens
+// when an Add() fails because there is no more room left in the filter.
 func (fl *Filter) Overflowed() bool {
 	return fl.overflowed
 }
 
+// Returns the number of items in the filter.
 func (fl *Filter) Count() int {
 	return fl.count
 }
