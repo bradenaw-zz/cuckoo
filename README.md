@@ -1,5 +1,7 @@
 # Cuckoo
 
+[![GoDoc](https://godoc.org/github.com/bradenaw/cuckoo?status.svg)](https://godoc.org/github.com/bradenaw/cuckoo)
+
 Package cuckoo implements a cuckoo filter using the techniques described in
 https://www.cs.cmu.edu/~dga/papers/cuckoo-conext2014.pdf.
 
