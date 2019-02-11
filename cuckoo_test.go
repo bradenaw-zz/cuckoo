@@ -60,43 +60,42 @@ func TestBasic(t *testing.T) {
 	require.Equal(t, f.Contains(key), Maybe)
 }
 
-func TestMany(t *testing.T) {
+func TestManyWithFP(t *testing.T) {
 	trand.RandomN(t, 100, func(t *testing.T, r *rand.Rand) {
-		testRandom(t, r, r.Int()%50+50)
+		testRandomWithFP(t, r, r.Int()%2000+10)
 	})
 }
 
-func TestHuge(t *testing.T) {
-	trand.RandomN(t, 1, func(t *testing.T, r *rand.Rand) {
-		testRandom(t, r, r.Int()%1000000+100000)
+func TestManyRaw(t *testing.T) {
+	trand.RandomN(t, 100, func(t *testing.T, r *rand.Rand) {
+		testRandomWithRaw(t, r, r.Int()%2000+10)
 	})
 }
 
-func testRandom(t *testing.T, r *rand.Rand, n int) {
-	fp := r.Float64()*0.02 + 0.01
-	f := New(n, fp)
+func TestLargeWithFP(t *testing.T) {
+	trand.RandomN(t, 5, func(t *testing.T, r *rand.Rand) {
+		testRandomWithFP(t, r, r.Int()%1000000+100000)
+	})
+}
 
-	items := make([][]byte, n)
-	for i := range items {
-		var key [8]byte
-		_, _ = r.Read(key[:])
-		items[i] = key[:]
-		f.Add(items[i])
-		require.Equal(t, Maybe, f.Contains(items[i]), "item %d broken", i)
-	}
+func TestLargeRaw(t *testing.T) {
+	trand.RandomN(t, 5, func(t *testing.T, r *rand.Rand) {
+		testRandomWithRaw(t, r, r.Int()%1000000+100000)
+	})
+}
 
-	//f.dump()
-	f.check()
+func testRandomWithFP(t *testing.T, r *rand.Rand, n int) {
+	fp := rand.Float64()*0.10 + 0.01
 
-	for i := range items {
-		require.Equal(t, Maybe, f.Contains(items[i]), "item %s missing", hex.EncodeToString(items[i]))
-	}
+	fl := New(n, fp)
+
+	testRandom(t, r, n, fl)
 
 	numFP := 0
 	for i := 0; i < n; i++ {
 		var key [8]byte
 		_, _ = r.Read(key[:])
-		if f.Contains(key[:]) == Maybe {
+		if fl.Contains(key[:]) == Maybe {
 			numFP++
 		}
 	}
@@ -106,4 +105,33 @@ func testRandom(t *testing.T, r *rand.Rand, n int) {
 		"%d false positives in %d attempts (%f%%)",
 		numFP, n, float64(numFP)/float64(n)*100,
 	)
+}
+
+func testRandomWithRaw(t *testing.T, r *rand.Rand, n int) {
+	f := r.Int()%14 + 3
+	b := r.Int()%8 + 1
+	if f*b > 64 {
+		b = 4
+	}
+
+	fl := NewRaw(f, b, n)
+
+	testRandom(t, r, n, fl)
+}
+
+func testRandom(t *testing.T, r *rand.Rand, n int, fl *Filter) {
+	items := make([][]byte, n)
+	for i := range items {
+		var key [8]byte
+		_, _ = r.Read(key[:])
+		items[i] = key[:]
+		fl.Add(items[i])
+		require.Equal(t, Maybe, fl.Contains(items[i]), "item %d broken", i)
+	}
+
+	fl.check()
+
+	for i := range items {
+		require.Equal(t, Maybe, fl.Contains(items[i]), "item %s missing", hex.EncodeToString(items[i]))
+	}
 }

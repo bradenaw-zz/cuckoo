@@ -10,7 +10,8 @@
 // store, and a lookup can be skipped entirely.
 //
 // The rate at which the filter responds "maybe" when an item wasn't actually added to the filter is
-// configurable, and changes the space used by the filter.
+// configurable, and changes the space used by the filter. If too many items are added to a filter,
+// it overflows and returns "maybe" for every query, becoming useless.
 //
 // Cuckoo filters are similar to Bloom filters, a more well-known variety of set-membership filter.
 // However, Cuckoo filters have two main advantages:
@@ -35,7 +36,7 @@ import (
 
 type Filter struct {
 	// The bitarray used to store buckets encoded with bucketEncoding.
-	inner          bitarray.BitArray
+	inner          bitarray.Array
 	bucketEncoding bucketEncoding
 	// The number of items in the filter.
 	count int
@@ -71,22 +72,21 @@ func New(n int, fp float64) *Filter {
 	b := 4
 	f := int(math.Min(math.Max(math.Ceil(math.Log2(2*float64(b)/float64(fp))), 4), 16))
 	loadFactor := 0.95
-	if n > 1<<20 {
-		loadFactor = 0.6
-	}
-	if n > 1<<25 {
-		loadFactor = 0.4
-	}
 	return NewRaw(f, b, int(float64(n)/float64(b)/float64(loadFactor)))
 }
 
-// Returns a new filter.
+// Returns a new filter constructed using raw parameters.
 //
 // - f: fingerprint length in bits. [2, 16]
 //
 // - b: bucket size in number of entries. [1, 8]
 //
 // - n: number of buckets in the table.
+//
+// The most efficient representation can be used when f=4 and b=4, using the fewest bits per item.
+//
+// See https://www.cs.cmu.edu/~dga/papers/cuckoo-conext2014.pdf for more information on how to
+// select these parameters.
 func NewRaw(f, b, n int) *Filter {
 	if f < 2 || f > 16 || b < 1 || b > 8 || f*b > 64 {
 		panic("invalid params")
@@ -265,7 +265,7 @@ func (fl *Filter) hashItem(x []byte) uint64 {
 
 func (fl *Filter) hashFingerprint(x fingerprint) uint64 {
 	h := fnv.New64a()
-	_, _ = h.Write([]byte{byte(x)})
+	_, _ = h.Write([]byte{byte(x >> 8), byte(x)})
 	return h.Sum64()
 }
 
@@ -275,6 +275,8 @@ type bucketEncoding interface {
 	size() uint64
 }
 
+// Direct encoding of buckets. Just appends each of the fingerprints to each other to make a
+// (f*b)-bit encoding.
 type directBucketEncoding struct {
 	f int
 	b int
@@ -300,6 +302,12 @@ func (e directBucketEncoding) size() uint64 {
 	return uint64(e.f * e.b)
 }
 
+// Packed encoding of buckets.
+//
+// Uses the technique from https://www.cs.cmu.edu/~dga/papers/cuckoo-conext2014.pdf section 5.2 to
+// save one bit per fingerprint in buckets of size 4.
+//
+// As such, only works with buckets of size 4 and fingerprints of size >=4.
 type packedBucketEncoding struct{ f int }
 
 func (e packedBucketEncoding) encode(b bucket) uint64 {
@@ -348,8 +356,9 @@ func (e packedBucketEncoding) sortBucketByLower4(b *bucket) {
 // A fingerprint of an element. 0 means 'none'.
 type fingerprint uint16
 type bucket struct {
-	l       int // The length of `entries`.
+	// This looks a lot like a slice but doing it this way means no allocations needed.
 	entries [8]fingerprint
+	l       int // The length of `entries`.
 }
 
 // Returns true if this bucket contains the given fingerprint.
