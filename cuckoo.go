@@ -34,14 +34,15 @@ import (
 )
 
 type Filter struct {
-	inner      bitarray.BitArray
-	count      int
+	// The bitarray used to store buckets encoded with bucketEncoding.
+	inner          bitarray.BitArray
+	bucketEncoding bucketEncoding
+	// The number of items in the filter.
+	count int
+	// True if the filter is overflowed, and now just returns Maybe for all queries.
 	overflowed bool
-
 	// The number of bits per fingerprint.
 	f int
-
-	bucketEncoding bucketEncoding
 }
 
 type Result byte
